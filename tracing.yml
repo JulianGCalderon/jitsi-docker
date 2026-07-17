@@ -1,0 +1,73 @@
+services:
+    tempo:
+        image: grafana/tempo:latest
+        restart: ${RESTART_POLICY:-unless-stopped}
+        command:
+            - -config.file=/etc/tempo/tempo.yaml
+        volumes:
+            - ./tracing/tempo/:/etc/tempo/
+        ports:
+            - "3200:3200"
+        networks:
+            meet.jitsi:
+
+
+    alloy:
+        image: grafana/alloy:latest
+        restart: ${RESTART_POLICY:-unless-stopped}
+        volumes:
+            - ./tracing/alloy/:/etc/alloy/
+            - /var/run/docker.sock:/var/run/docker.sock
+        command:
+            - run
+            - /etc/alloy/config.alloy
+            - --server.http.listen-addr=0.0.0.0:12345
+        environment:
+            - ALLOY_OTLP_UPSTREAM=tempo:4317
+        ports:
+            - "12345:12345"
+            - "4317:4317"
+        depends_on:
+            - tempo
+        networks:
+            meet.jitsi:
+
+    grafana:
+        image: grafana/grafana:latest
+        restart: ${RESTART_POLICY:-unless-stopped}
+        volumes:
+            - ./tracing/grafana-provisioning/:/etc/grafana/provisioning
+        environment:
+            - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
+            - GF_AUTH_ANONYMOUS_ENABLED=true
+            - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+            - GF_AUTH_DISABLE_LOGIN_FORM=true
+        ports:
+            - "3000:3000"
+        networks:
+            meet.jitsi:
+
+    prometheus:
+        image: prom/prometheus:latest
+        restart: ${RESTART_POLICY:-unless-stopped}
+        command:
+            - --config.file=/etc/prometheus/prometheus.yaml
+            - --web.enable-remote-write-receiver
+            - --enable-feature=exemplar-storage
+            - --enable-feature=native-histograms
+        volumes:
+            - ./tracing/prometheus/:/etc/prometheus/
+        ports:
+            - "9090:9090"
+        networks:
+            meet.jitsi:
+
+    loki:
+        image: grafana/loki:3.0.0
+        command: -config.file=/etc/loki/config.yaml
+        volumes:
+            - ./tracing/loki/:/etc/loki/
+        ports:
+            - "3100:3100"
+        networks:
+            meet.jitsi:
